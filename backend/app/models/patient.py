@@ -39,9 +39,9 @@ class Patient(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     first_name: Mapped[str] = mapped_column(String(100))
-    last_name: Mapped[str] = mapped_column(String(100))
+    last_name: Mapped[str] = mapped_column(String(100), index=True)
     date_of_birth: Mapped[date] = mapped_column(Date)
-    email: Mapped[str] = mapped_column(String(255))
+    email: Mapped[str] = mapped_column(String(255), unique=True)
     phone: Mapped[str] = mapped_column(String(50))
     address_street: Mapped[str] = mapped_column(String(255))
     address_city: Mapped[str] = mapped_column(String(120))
@@ -53,6 +53,7 @@ class Patient(Base):
     status: Mapped[PatientStatus] = mapped_column(
         Enum(PatientStatus, name="patient_status", values_callable=_enum_values),
         default=PatientStatus.ACTIVE,
+        index=True,
     )
     allergies: Mapped[list[str]] = mapped_column(JSONB, default=list)
     conditions: Mapped[list[str]] = mapped_column(JSONB, default=list)

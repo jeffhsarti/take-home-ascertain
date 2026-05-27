@@ -69,3 +69,44 @@ async def test_delete_patient(client, patient_payload):
     pid = (await client.post("/patients", json=patient_payload)).json()["id"]
     assert (await client.delete(f"/patients/{pid}")).status_code == 204
     assert (await client.get(f"/patients/{pid}")).status_code == 404
+
+
+async def test_put_missing_field_returns_422(client, patient_payload):
+    # PUT is a full replace; omitting a field must 422, not silently reset it.
+    pid = (await client.post("/patients", json=patient_payload)).json()["id"]
+    incomplete = {k: v for k, v in patient_payload.items() if k != "status"}
+    resp = await client.put(f"/patients/{pid}", json=incomplete)
+    assert resp.status_code == 422
+
+
+async def test_duplicate_email_returns_409(client, patient_payload):
+    assert (await client.post("/patients", json=patient_payload)).status_code == 201
+    resp = await client.post("/patients", json=patient_payload)
+    assert resp.status_code == 409
+
+
+async def test_invalid_sort_by_returns_422(client):
+    resp = await client.get("/patients", params={"sort_by": "DROP TABLE"})
+    assert resp.status_code == 422
+
+
+async def test_sorting_by_last_name(client, patient_payload):
+    for i, last in enumerate(["Zimmer", "Adams", "Miller"]):
+        await client.post(
+            "/patients",
+            json={**patient_payload, "last_name": last, "email": f"sort{i}@example.com"},
+        )
+    asc = await client.get("/patients", params={"sort_by": "last_name", "sort_order": "asc"})
+    names = [p["last_name"] for p in asc.json()["items"]]
+    assert names == sorted(names)
+
+    desc = await client.get("/patients", params={"sort_by": "last_name", "sort_order": "desc"})
+    names_desc = [p["last_name"] for p in desc.json()["items"]]
+    assert names_desc == sorted(names_desc, reverse=True)
+
+
+async def test_future_last_visit_returns_422(client, patient_payload):
+    resp = await client.post(
+        "/patients", json={**patient_payload, "last_visit": "2999-01-01"}
+    )
+    assert resp.status_code == 422

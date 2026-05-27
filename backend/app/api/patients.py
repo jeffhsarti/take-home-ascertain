@@ -1,3 +1,4 @@
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -18,7 +19,9 @@ async def list_patients(
     page_size: int = Query(20, ge=1, le=100),
     search: str | None = Query(None),
     status: PatientStatus | None = Query(None),
-    sort_by: str = Query("last_name"),
+    sort_by: Literal[
+        "first_name", "last_name", "last_visit", "status", "created_at"
+    ] = Query("last_name"),
     sort_order: str = Query("asc", pattern="^(asc|desc)$"),
     db: AsyncSession = Depends(get_db),
 ) -> Paginated[PatientRead]:

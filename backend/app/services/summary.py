@@ -1,17 +1,11 @@
 import logging
-from datetime import date
 
 from app.core.config import settings
+from app.core.dates import compute_age
 from app.models import Note, Patient
 from app.schemas.summary import PatientSummary
 
 logger = logging.getLogger("app.summary")
-
-
-def compute_age(dob: date) -> int:
-    today = date.today()
-    had_birthday = (today.month, today.day) >= (dob.month, dob.day)
-    return today.year - dob.year - (0 if had_birthday else 1)
 
 
 def _join(items: list[str]) -> str:
@@ -72,7 +66,9 @@ async def _llm_narrative(patient: Patient, notes: list[Note], name: str, age: in
                     "text": (
                         "You are a clinical assistant. Write a concise, coherent narrative "
                         "summary of the patient from their profile and notes, in a professional "
-                        "tone and at most two short paragraphs."
+                        "tone and at most two short paragraphs. Respond in plain prose only: "
+                        "no Markdown, no headings, no bullet points, no bold or other special "
+                        "formatting — output should match a plain-text template."
                     ),
                     "cache_control": {"type": "ephemeral"},
                 }
@@ -82,7 +78,9 @@ async def _llm_narrative(patient: Patient, notes: list[Note], name: str, age: in
         text = "".join(block.text for block in message.content if block.type == "text")
         return text.strip() or None
     except Exception:
-        logger.warning("LLM summary generation failed; falling back to template", exc_info=True)
+        # A key was configured (guarded above) yet the call failed — surface this at
+        # error level so a misconfiguration isn't masked by the silent template fallback.
+        logger.exception("LLM summary generation failed; falling back to template")
         return None
 
 
