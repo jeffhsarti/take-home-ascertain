@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.health import router as health_router
+from app.api.notes import router as notes_router
 from app.api.patients import router as patients_router
 from app.core.config import settings
 from app.core.logging import RequestLoggingMiddleware, setup_logging
@@ -30,6 +31,7 @@ def create_app() -> FastAPI:
 
     app.include_router(health_router)
     app.include_router(patients_router)
+    app.include_router(notes_router)
     return app
 
 
