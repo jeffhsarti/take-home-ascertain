@@ -14,3 +14,8 @@ export async function listPatients(params: ListPatientsParams): Promise<Paginate
   const { data } = await apiClient.get<Paginated<Patient>>('/patients', { params })
   return data
 }
+
+export async function getPatient(id: string): Promise<Patient> {
+  const { data } = await apiClient.get<Patient>(`/patients/${id}`)
+  return data
+}
