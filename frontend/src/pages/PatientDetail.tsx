@@ -56,6 +56,17 @@ export default function PatientDetail() {
   const [showSummary, setShowSummary] = useState(false)
   const summary = useSummary(id, showSummary)
 
+  // First click enables the query (auto-fetches); afterwards "Regenerate" must
+  // force a fresh request — re-setting showSummary to true is a no-op and would
+  // not refetch (the query stays enabled and cached).
+  const handleGenerate = () => {
+    if (showSummary) {
+      summary.refetch()
+    } else {
+      setShowSummary(true)
+    }
+  }
+
   if (isLoading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
@@ -150,7 +161,7 @@ export default function PatientDetail() {
           sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 1 }}
         >
           <Typography variant="h6">Summary</Typography>
-          <Button onClick={() => setShowSummary(true)} disabled={summary.isFetching}>
+          <Button onClick={handleGenerate} disabled={summary.isFetching}>
             {showSummary ? 'Regenerate' : 'Generate summary'}
           </Button>
         </Stack>
