@@ -1,18 +1,36 @@
 import { create } from 'zustand'
+import type { PatientStatus } from '../types'
 
 export type SortOrder = 'asc' | 'desc'
 
-interface UiState {
+export interface PatientListState {
   search: string
-  statusFilter: string | null
+  status: PatientStatus | null
+  sortBy: string
+  sortOrder: SortOrder
+  page: number // zero-based (DataGrid convention)
+  pageSize: number
   setSearch: (search: string) => void
-  setStatusFilter: (status: string | null) => void
+  setStatus: (status: PatientStatus | null) => void
+  setSort: (sortBy: string, sortOrder: SortOrder) => void
+  setPage: (page: number) => void
+  setPageSize: (pageSize: number) => void
+  hydrate: (partial: Partial<PatientListState>) => void
 }
 
-// Lightweight client UI state. Server data lives in TanStack Query, not here.
-export const useUiStore = create<UiState>((set) => ({
+// Client UI state for the patient list (filters/sort/pagination). Server data
+// itself lives in TanStack Query, not here.
+export const usePatientListStore = create<PatientListState>((set) => ({
   search: '',
-  statusFilter: null,
-  setSearch: (search) => set({ search }),
-  setStatusFilter: (statusFilter) => set({ statusFilter }),
+  status: null,
+  sortBy: 'last_name',
+  sortOrder: 'asc',
+  page: 0,
+  pageSize: 20,
+  setSearch: (search) => set({ search, page: 0 }),
+  setStatus: (status) => set({ status, page: 0 }),
+  setSort: (sortBy, sortOrder) => set({ sortBy, sortOrder }),
+  setPage: (page) => set({ page }),
+  setPageSize: (pageSize) => set({ pageSize, page: 0 }),
+  hydrate: (partial) => set(partial),
 }))
