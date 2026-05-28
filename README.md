@@ -125,6 +125,20 @@ cd backend && uv run pytest
 cd frontend && npm test
 ```
 
+### Performance / stress (k6)
+
+Load tests for the read paths behind the dashboard, list, and search live in
+[`perf/`](./perf/README.md). With the stack running, from the repo root:
+
+```bash
+# Baseline (run first); swap PROFILE for load | stress | spike
+docker run --rm --network host -w /scripts --user "$(id -u):$(id -g)" \
+  -e PROFILE=smoke -v "$PWD/perf/k6:/scripts" grafana/k6 run main.js
+```
+
+No local k6 install required. See [`perf/README.md`](./perf/README.md) for the profiles,
+thresholds, and how the tagged output pinpoints each suspected bottleneck.
+
 ---
 
 ## Project structure
