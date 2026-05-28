@@ -8,6 +8,7 @@ from app.db.session import get_db
 from app.models import PatientStatus
 from app.schemas.common import Paginated
 from app.schemas.patient import PatientCreate, PatientRead, PatientUpdate
+from app.schemas.stats import PatientStats
 from app.services import patients as service
 
 router = APIRouter(prefix="/patients", tags=["patients"])
@@ -38,6 +39,12 @@ async def list_patients(
     return Paginated[PatientRead](
         items=items, total=total, page=page, page_size=page_size, total_pages=total_pages
     )
+
+
+# Declared before /{patient_id} so "stats" is matched as a literal, not a UUID path param.
+@router.get("/stats", response_model=PatientStats)
+async def patient_stats(db: AsyncSession = Depends(get_db)) -> PatientStats:
+    return await service.get_patient_stats(db)
 
 
 @router.get("/{patient_id}", response_model=PatientRead)
