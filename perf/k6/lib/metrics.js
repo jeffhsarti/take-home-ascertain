@@ -9,6 +9,7 @@ export const latency = {
   dashboard: new Trend('dashboard_latency', true),
   browse_list: new Trend('list_latency', true),
   search: new Trend('search_latency', true),
+  writes: new Trend('writes_latency', true),
 };
 
 export function handleSummary(data) {

@@ -30,6 +30,7 @@ See [`../plan.md`](../plan.md) for the overall architecture and decisions.
 | 20 | [Search min-length guard](./task-20-search-min-length-guard.md) | Perf follow-up · P2 | 05, 08, 17 |
 | 21 | [Indexes for sortable columns](./task-21-sortable-column-indexes.md) | Perf follow-up · P2 | 03, 05, 17 |
 | 22 | [Keyset pagination & count strategy](./task-22-keyset-pagination-count-strategy.md) | Perf follow-up · P3 | 05, 08, 21, 17 |
+| 23 | [k6 write-path smoke tests](./task-23-k6-write-smoke-tests.md) | Perf follow-up · P3 | 05, 06, 17, 21 |
 
 **Suggested execution order:** 00 → 01 → 02 → 03 → 04 → 05 → 06 → 07 → 08 → 09 → 10 → 11 → 12 → 13.
 Task 00 stands up Postgres first so the backend can be developed against a real database
@@ -43,11 +44,17 @@ are independent and can run in parallel; 16 (charts) depends on both. Order: 14 
 Task 17 (k6 perf/stress suite) is an independent stretch item; it only *measures* the
 read paths (list, search, stats) and needs the stack running with the 10k seed.
 
-Tasks 18–22 are **optimization follow-ups proposed from the task-17 findings** (the stress
-run collapsed uniformly → capacity, not query shape, is the first-order ceiling).
+Tasks 18–23 are **optimization & coverage follow-ups proposed from the task-17 findings**
+(the stress run collapsed uniformly → capacity, not query shape, is the first-order
+ceiling).
 
 - **18–21: ✅ implemented & verified** (branch `perf/tasks-18-21`). Re-measuring with
   task-17: `http_req_failed` 60% → 0.01%, dashboard p95 ~5s → 178ms; all SLOs pass at
   realistic `load`. See each task's Outcome and task-17's Findings.
 - **22 (keyset pagination): deferred** by request — the remaining list/search ceiling under
   extreme `stress` lives here, but it's not needed at realistic traffic.
+- **23 (write-path smoke): proposed** — adds a regression canary for `POST/PUT/DELETE`
+  paths (especially relevant after task-21 added write-amplifying indexes). Smoke-only:
+  full load/stress on writes is deliberately deferred until a volumetria target exists,
+  since arbitrary write SLOs would be invented and open-model arrival rate would pollute
+  the read dataset. Rationale documented in the task body.

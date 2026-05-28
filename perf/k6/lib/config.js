@@ -30,6 +30,15 @@ const THRESHOLDS = {
   'http_req_duration{depth:shallow}': [],
   'http_req_duration{sort:unindexed}': [], // hypothesis #4: unindexed ORDER BY
   'http_req_duration{sort:indexed}': [],
+
+  // task-23 write-path smoke. Calibrated at ~5x the first clean-run p95 (which
+  // came in at 4-8ms locally), so the budget catches a real regression without
+  // tripping on single-iteration noise. Re-baseline if the host hardware changes.
+  'http_req_duration{scenario:writes,op:create}': ['p(95)<50'],
+  'http_req_duration{scenario:writes,op:update}': ['p(95)<50'],
+  'http_req_duration{scenario:writes,op:delete}': ['p(95)<30'],
+  'http_req_duration{scenario:writes,op:note}': ['p(95)<50'],
+  'http_req_duration{scenario:writes,op:note_delete}': ['p(95)<30'],
 };
 
 // --- executor factories -----------------------------------------------------------
@@ -115,6 +124,20 @@ const PROFILES = {
     dashboard: spike('dashboard', 150, 300),
     browse_list: spike('browseList', 400, 500),
     search: spike('search', 400, 500),
+  },
+  // task-23: write-path smoke. 1 VU, sequential, low iteration count. Each
+  // iteration of `writes` chains POST → PUT → POST note → DELETE note → DELETE
+  // patient, so 10 iterations ≈ 50 requests — enough sample for p95 without
+  // creating a pile of rows if cleanup misfires. Deliberately not part of any
+  // existing profile: the read profiles must stay opt-in idempotent.
+  'writes-smoke': {
+    writes: {
+      executor: 'per-vu-iterations',
+      exec: 'writes',
+      vus: 1,
+      iterations: 10,
+      maxDuration: '1m',
+    },
   },
 };
 

@@ -10,9 +10,10 @@ import { buildOptions } from './lib/config.js';
 import { dashboard } from './scenarios/dashboard.js';
 import { browseList } from './scenarios/browseList.js';
 import { search } from './scenarios/search.js';
+import { writes } from './scenarios/writes.js';
 
 export const options = buildOptions(__ENV);
 
 // Scenario `exec` names in config.js must match these exported function names.
-export { dashboard, browseList, search };
+export { dashboard, browseList, search, writes };
 export { handleSummary } from './lib/metrics.js';
