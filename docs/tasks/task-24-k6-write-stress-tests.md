@@ -243,6 +243,46 @@ These numbers are from a single local container — directional, not absolute.
 The *delta* between pure and mixed (pure writes p95 ≈ 6× mixed writes p95;
 reads break in mixed but not pure) is what matters.
 
+### Possible mitigations (exploratory, no volumetria yet)
+
+Listed with trade-offs, not as a recommended path — without a real target, all
+three are valid for different shapes of the problem. Each would want a fresh
+`writes-stress-mixed` run to verify it actually shifts the knee.
+
+- **Shared cache (Redis / Memcached) in front of dashboard + list.** task-19
+  already caches `/patients/stats` **per worker** in process; the mixed run
+  shows that's not enough — two workers means two TTLs that don't share hits,
+  and `browse_list` isn't cached at all. A shared cache covers both endpoints
+  and frees the connection pool for writes.
+  - *Trade-off — stats:* tiny stale window (TTL) is harmless; aggregates over
+    10k+ rows don't visibly change at minute granularity.
+  - *Trade-off — list:* the "I just created a patient and don't see them"
+    UX hazard. Mitigate with explicit invalidation on the write path (small
+    code change, keeps stale window near zero) rather than long TTL.
+  - *Cost:* new infra service in compose + dev/prod parity surface.
+
+- **Materialized view + scheduled refresh for `/patients/stats`.** Postgres-
+  native, no per-worker duplication, zero per-request aggregation work.
+  - *Trade-off:* fits aggregations specifically; **doesn't help `browse_list`**
+    (page/filter combinatorics defeat materialization). So this addresses one
+    of the two SLO breaches, not both.
+  - *Cost:* small — a migration + a cron/pg_cron refresh, no new service.
+
+- **Read replica with split routing.** Sends read traffic to a hot standby so
+  writes never compete with reads for the same pool slots. Orthogonal to caching
+  — they stack.
+  - *Trade-off:* replication lag is its own eventual-consistency window
+    (typically sub-second on local network, but still real).
+  - *Cost:* infra (replica + monitoring) + app changes (read/write session
+    routing). Highest blast radius of the three.
+
+A cleaner pool tuning pass (raising `DB_POOL_SIZE` / `WEB_CONCURRENCY`, plus
+`max_connections` on the DB) is the **zero-architecture** first move and
+should be tried before any of the above — it's already what task-18 sized,
+just never re-validated with writes in the mix. If pool tuning alone closes
+the SLO gap at the target volumetria (when one exists), none of the
+mitigations above are needed yet.
+
 ## Future work (still not in scope)
 
 When a real write volumetria target lands:
