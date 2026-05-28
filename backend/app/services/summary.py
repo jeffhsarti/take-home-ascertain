@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from app.core.config import settings
@@ -57,26 +58,39 @@ async def _llm_narrative(patient: Patient, notes: list[Note], name: str, age: in
             f"Allergies: {', '.join(patient.allergies) or 'none'}\n"
             f"Notes (chronological):\n{notes_text}"
         )
-        message = await client.messages.create(
-            model="claude-haiku-4-5",
-            max_tokens=400,
-            system=[
-                {
-                    "type": "text",
-                    "text": (
-                        "You are a clinical assistant. Write a concise, coherent narrative "
-                        "summary of the patient from their profile and notes, in a professional "
-                        "tone and at most two short paragraphs. Respond in plain prose only: "
-                        "no Markdown, no headings, no bullet points, no bold or other special "
-                        "formatting — output should match a plain-text template."
-                    ),
-                    "cache_control": {"type": "ephemeral"},
-                }
-            ],
-            messages=[{"role": "user", "content": user}],
+        # Hard ceiling on the LLM round-trip — Haiku with 400 tokens usually responds in
+        # 1-3s, so 5s leaves ~2x headroom while keeping the worst-case user wait bounded.
+        # Without this the request would block on a hung Anthropic call and tie up a
+        # connection-pool slot indefinitely under any concurrency.
+        message = await asyncio.wait_for(
+            client.messages.create(
+                model="claude-haiku-4-5",
+                max_tokens=400,
+                system=[
+                    {
+                        "type": "text",
+                        "text": (
+                            "You are a clinical assistant. Write a concise, coherent "
+                            "narrative summary of the patient from their profile and notes, "
+                            "in a professional tone and at most two short paragraphs. "
+                            "Respond in plain prose only: no Markdown, no headings, no "
+                            "bullet points, no bold or other special formatting — output "
+                            "should match a plain-text template."
+                        ),
+                        "cache_control": {"type": "ephemeral"},
+                    }
+                ],
+                messages=[{"role": "user", "content": user}],
+            ),
+            timeout=5.0,
         )
         text = "".join(block.text for block in message.content if block.type == "text")
         return text.strip() or None
+    except TimeoutError:
+        # Expected degradation under upstream slowness — log at WARNING (not ERROR) so
+        # it doesn't pollute alerting, but is still visible when diagnosing latency.
+        logger.warning("LLM summary timed out after 5s; falling back to template")
+        return None
     except Exception:
         # A key was configured (guarded above) yet the call failed — surface this at
         # error level so a misconfiguration isn't masked by the silent template fallback.
