@@ -4,6 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.db.session import get_db
 from app.models import PatientStatus
 from app.schemas.common import Paginated
@@ -26,6 +27,17 @@ async def list_patients(
     sort_order: str = Query("asc", pattern="^(asc|desc)$"),
     db: AsyncSession = Depends(get_db),
 ) -> Paginated[PatientRead]:
+    # A whitespace-only term is "no search"; a non-empty term below the trigram floor
+    # is rejected rather than triggering a full-table sequential scan (task-20).
+    if search is not None:
+        search = search.strip()
+        if not search:
+            search = None
+        elif len(search) < settings.search_min_length:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Search term must be at least {settings.search_min_length} characters.",
+            )
     items, total = await service.list_patients(
         db,
         page=page,

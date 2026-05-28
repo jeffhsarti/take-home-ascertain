@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { InputAdornment, TextField } from '@mui/material'
 import SearchIcon from '@mui/icons-material/Search'
+import { SEARCH_MIN_LENGTH } from '../../hooks/usePatients'
 
 interface SearchBarProps {
   value: string
@@ -29,12 +30,16 @@ export function SearchBar({ value, onChange, delay = 300 }: SearchBarProps) {
     return () => clearTimeout(id)
   }, [text, value, delay, onChange])
 
+  // Hint that the search only fires once it can be index-served (matches the backend floor).
+  const tooShort = text.trim().length > 0 && text.trim().length < SEARCH_MIN_LENGTH
+
   return (
     <TextField
       size="small"
       placeholder="Search name or email"
       value={text}
       onChange={(e) => setText(e.target.value)}
+      helperText={tooShort ? `Type at least ${SEARCH_MIN_LENGTH} characters` : undefined}
       slotProps={{
         input: {
           startAdornment: (

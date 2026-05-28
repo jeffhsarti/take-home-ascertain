@@ -110,3 +110,26 @@ async def test_future_last_visit_returns_422(client, patient_payload):
         "/patients", json={**patient_payload, "last_visit": "2999-01-01"}
     )
     assert resp.status_code == 422
+
+
+async def test_short_search_returns_422(client):
+    # Below the trigram floor: rejected instead of triggering a sequential scan (task-20).
+    assert (await client.get("/patients", params={"search": "a"})).status_code == 422
+    assert (await client.get("/patients", params={"search": "ab"})).status_code == 422
+
+
+async def test_whitespace_search_is_no_filter(client, patient_payload):
+    await client.post("/patients", json=patient_payload)
+    # A blank/whitespace term is treated as "no search", not a rejection.
+    resp = await client.get("/patients", params={"search": "   "})
+    assert resp.status_code == 200
+    assert resp.json()["total"] == 1
+
+
+async def test_search_at_floor_is_allowed(client, patient_payload):
+    await client.post(
+        "/patients", json={**patient_payload, "first_name": "Abe", "email": "abe@example.com"}
+    )
+    resp = await client.get("/patients", params={"search": "Abe"})
+    assert resp.status_code == 200
+    assert resp.json()["total"] == 1
