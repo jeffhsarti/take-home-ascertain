@@ -210,6 +210,36 @@ The seed data is synthetic (Faker). Do not load real PHI into this stack as-is.
   task-24 mitigations (shared cache or materialized view) to close the read-SLO breach
   the mixed write-stress profile surfaces.
 
-```
+---
 
-```
+## If I had to fit the 2-4h budget
+
+The brief recommends spending no more than 2-4 hours and picking **1-2 stretch goals**.
+This repo is well over that. As a judgment exercise, here's what I'd cut first if a
+reviewer told me "you have 4 hours — ship the minimum":
+
+1. **The whole perf trilha (tasks 17-24).** k6 read suite, capacity tuning, stats cache,
+   write smoke, write stress with isolated stack — the most visually impressive part of
+   the work, and the easiest to cut. The brief asks for a list that "handles 100+
+   patients efficiently"; I went on to measure the open-model knee at ~1000 rps. Nothing
+   in the brief requires that.
+2. **3 of the 4 dashboard charts (task-16).** The brief lists "data visualization
+   (patient status chart)" as **one** stretch under Advanced UI/UX. I built four
+   (`StatusDonut`, `AgeHistogram`, `BloodTypeBars`, `TopConditionsBars`) plus a stats
+   aggregation endpoint to back them. Keep one; cut the rest.
+3. **Theme overhaul + dark mode (task-15).** Listed as a stretch option, but I spent
+   theme budget beyond a toggle (palette unification across charts, status chips, etc.).
+   Cut to the toggle.
+4. **Most of `docs/tasks/`.** 24 per-task briefs is process artifact, not deliverable.
+   Keep `plan.md` and the task README; drop the rest.
+
+What I'd keep in the 2-4h scope: full Parts 1-5 of the brief, **one** stretch
+(I'd pick the **CI workflow** — explicit in the brief, highest leverage per minute), and
+either the dark-mode toggle **or** a single status chart, not both. That covers what
+the brief actually asks for, demonstrates one stretch goal end-to-end, and leaves room
+to think about edge cases instead of feature count.
+
+The bigger thing this repo demonstrates that the trimmed version wouldn't: how I plan
+and prioritize when given unlimited rope. The smaller thing it also demonstrates: that
+I get carried away easily when something interests me and don't watch scope as tightly
+as I should. Worth flagging honestly rather than hoping the reviewer doesn't notice.
