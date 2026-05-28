@@ -35,3 +35,7 @@ export async function updatePatient(id: string, payload: PatientFormValues): Pro
   const { data } = await apiClient.put<Patient>(`/patients/${id}`, payload)
   return data
 }
+
+export async function deletePatient(id: string): Promise<void> {
+  await apiClient.delete(`/patients/${id}`)
+}

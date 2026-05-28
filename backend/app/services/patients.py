@@ -10,7 +10,9 @@ from app.models import BloodType, Patient, PatientStatus
 from app.schemas.patient import PatientCreate, PatientUpdate
 from app.schemas.stats import AgeGroupBucket, ConditionCount, PatientStats
 
-# Whitelist of sortable columns; anything else falls back to last_name.
+# Whitelist of sortable columns. The route validates `sort_by` against a
+# matching `Literal[...]` and 422s anything else, so this dict is also the
+# canonical source for that enumeration.
 SORTABLE = {
     "first_name": Patient.first_name,
     "last_name": Patient.last_name,
@@ -55,7 +57,7 @@ async def list_patients(
 
     total = await session.scalar(select(func.count()).select_from(stmt.subquery())) or 0
 
-    column = SORTABLE.get(sort_by, Patient.last_name)
+    column = SORTABLE[sort_by]
     ordering = column.desc() if sort_order == "desc" else column.asc()
     stmt = stmt.order_by(ordering).offset((page - 1) * page_size).limit(page_size)
 
@@ -72,6 +74,7 @@ async def create_patient(session: AsyncSession, data: PatientCreate) -> Patient:
     session.add(patient)
     await session.commit()
     await session.refresh(patient)
+    reset_stats_cache()
     return patient
 
 
@@ -80,12 +83,14 @@ async def update_patient(session: AsyncSession, patient: Patient, data: PatientU
         setattr(patient, field, value)
     await session.commit()
     await session.refresh(patient)
+    reset_stats_cache()
     return patient
 
 
 async def delete_patient(session: AsyncSession, patient: Patient) -> None:
     await session.delete(patient)
     await session.commit()
+    reset_stats_cache()
 
 
 # Short-lived, per-process cache for the dashboard aggregates (task-19). The stats
@@ -97,7 +102,11 @@ _stats_lock = asyncio.Lock()
 
 
 def reset_stats_cache() -> None:
-    """Drop the cached stats. Used by tests and after bulk data changes."""
+    """Drop the cached stats. Called from tests and from every patient mutation
+    so the writer's next dashboard request reflects their change. Only busts
+    the local worker's cache — other workers still serve stale data until their
+    own TTL elapses (acceptable: a stats panel can lag by ``ttl`` across workers,
+    but should never lag for the user who just made the change)."""
     global _stats_cache, _stats_cached_at
     _stats_cache = None
     _stats_cached_at = 0.0

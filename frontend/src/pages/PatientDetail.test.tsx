@@ -1,5 +1,5 @@
 import { Route, Routes } from 'react-router-dom'
-import { screen } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { renderWithProviders } from '../test/utils'
@@ -21,6 +21,27 @@ describe('PatientDetail', () => {
 
     expect(await screen.findByText(/Alice Anderson/)).toBeInTheDocument()
     expect(await screen.findByText('Reviewed labs.')).toBeInTheDocument()
+  })
+
+  it('confirms before deleting a patient and calls DELETE on confirm', async () => {
+    let deleted = false
+    server.use(
+      http.delete('*/patients/:id', () => {
+        deleted = true
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+
+    renderDetail()
+    await screen.findByText(/Alice Anderson/)
+
+    await userEvent.click(screen.getByRole('button', { name: /^delete$/i }))
+    // Dialog is open and asks for confirmation before issuing the request.
+    expect(await screen.findByText(/delete patient\?/i)).toBeInTheDocument()
+    expect(deleted).toBe(false)
+
+    await userEvent.click(screen.getByRole('button', { name: /^delete$/i }))
+    await waitFor(() => expect(deleted).toBe(true))
   })
 
   it('refetches the summary every time Regenerate is clicked', async () => {

@@ -12,7 +12,13 @@ export const patientSchema = z.object({
     .min(1, 'Required')
     .refine((value) => new Date(value) <= new Date(), 'Cannot be in the future'),
   email: z.email('Invalid email address'),
-  phone: z.string().min(1, 'Required').max(50),
+  phone: z
+    .string()
+    .min(1, 'Required')
+    .max(50)
+    // Mirrors the server's "≥ 7 digits" rule so the user sees the error inline
+    // instead of round-tripping to a 422.
+    .refine((v) => v.replace(/\D/g, '').length >= 7, 'Must contain at least 7 digits'),
   address_street: z.string().min(1, 'Required').max(255),
   address_city: z.string().min(1, 'Required').max(120),
   address_state: z.string().min(1, 'Required').max(120),

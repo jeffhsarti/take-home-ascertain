@@ -1,19 +1,26 @@
 import { useState } from 'react'
-import { Link as RouterLink, useParams } from 'react-router-dom'
+import { Link as RouterLink, useNavigate, useParams } from 'react-router-dom'
 import {
   Alert,
   Box,
   Button,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
   Divider,
   Paper,
   Stack,
   Typography,
 } from '@mui/material'
+import DeleteIcon from '@mui/icons-material/Delete'
 import EditIcon from '@mui/icons-material/Edit'
 import { usePatient } from '../hooks/usePatient'
 import { useAddNote, useDeleteNote, useNotes } from '../hooks/useNotes'
+import { useDeletePatient } from '../hooks/usePatientMutations'
 import { useSummary } from '../hooks/useSummary'
 import { NoteForm } from '../components/notes/NoteForm'
 import { NoteList } from '../components/notes/NoteList'
@@ -49,11 +56,14 @@ function ChipList({ items, color }: { items: string[]; color: 'error' | 'info' }
 
 export default function PatientDetail() {
   const { id = '' } = useParams()
+  const navigate = useNavigate()
   const { data: patient, isLoading, isError } = usePatient(id)
   const { data: notes = [] } = useNotes(id)
   const addNote = useAddNote(id)
   const deleteNote = useDeleteNote(id)
+  const deletePatientMutation = useDeletePatient()
   const [showSummary, setShowSummary] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const summary = useSummary(id, showSummary)
 
   // First click enables the query (auto-fetches); afterwards "Regenerate" must
@@ -64,6 +74,16 @@ export default function PatientDetail() {
       summary.refetch()
     } else {
       setShowSummary(true)
+    }
+  }
+
+  const handleConfirmDelete = async () => {
+    try {
+      await deletePatientMutation.mutateAsync(id)
+      navigate('/patients')
+    } catch {
+      // Mutation isError is surfaced in the dialog; dialog stays open so the
+      // user can retry or cancel.
     }
   }
 
@@ -104,14 +124,24 @@ export default function PatientDetail() {
             </Typography>
           </Stack>
         </Box>
-        <Button
-          component={RouterLink}
-          to={`/patients/${patient.id}/edit`}
-          variant="outlined"
-          startIcon={<EditIcon />}
-        >
-          Edit
-        </Button>
+        <Stack direction="row" spacing={1}>
+          <Button
+            component={RouterLink}
+            to={`/patients/${patient.id}/edit`}
+            variant="outlined"
+            startIcon={<EditIcon />}
+          >
+            Edit
+          </Button>
+          <Button
+            color="error"
+            variant="outlined"
+            startIcon={<DeleteIcon />}
+            onClick={() => setConfirmDelete(true)}
+          >
+            Delete
+          </Button>
+        </Stack>
       </Stack>
 
       <Paper sx={{ p: 3 }}>
@@ -201,6 +231,37 @@ export default function PatientDetail() {
           <NoteList notes={notes} onDelete={(noteId) => deleteNote.mutate(noteId)} />
         </Box>
       </Paper>
+
+      <Dialog open={confirmDelete} onClose={() => setConfirmDelete(false)}>
+        <DialogTitle>Delete patient?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            This will permanently remove {patient.first_name} {patient.last_name} and all of
+            their clinical notes. This action cannot be undone.
+          </DialogContentText>
+          {deletePatientMutation.isError && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              Could not delete the patient. Please try again.
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => setConfirmDelete(false)}
+            disabled={deletePatientMutation.isPending}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleConfirmDelete}
+            color="error"
+            variant="contained"
+            disabled={deletePatientMutation.isPending}
+          >
+            {deletePatientMutation.isPending ? 'Deleting…' : 'Delete'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }

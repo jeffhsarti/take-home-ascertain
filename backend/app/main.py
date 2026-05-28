@@ -30,8 +30,18 @@ async def lifespan(app: FastAPI):
 
 
 async def _integrity_error_handler(request: Request, exc: IntegrityError) -> JSONResponse:
-    """Map DB constraint violations (e.g. duplicate email) to 409 instead of 500."""
-    logger.warning("Integrity error on %s %s: %s", request.method, request.url.path, exc.orig)
+    """Map unique-constraint violations (e.g. duplicate email) to 409. Other
+    integrity failures (FK, NOT NULL, check) re-raise so they surface as 500 —
+    those indicate a bug, not a client conflict."""
+    # asyncpg exposes the 5-char SQLSTATE; 23505 == unique_violation.
+    sqlstate = getattr(getattr(exc, "orig", None), "sqlstate", None)
+    if sqlstate != "23505":
+        logger.error(
+            "Non-unique integrity error on %s %s (sqlstate=%s): %s",
+            request.method, request.url.path, sqlstate, exc.orig,
+        )
+        raise exc
+    logger.warning("Unique violation on %s %s: %s", request.method, request.url.path, exc.orig)
     return JSONResponse(
         status_code=409,
         content={"detail": "Resource conflict: a record with these values already exists."},

@@ -3,7 +3,7 @@
 A patient-management dashboard for a medical practice: a **React + TypeScript** frontend,
 a **FastAPI** backend, and **PostgreSQL**, all runnable with a single `docker compose` command.
 
-- Browse 120 seeded patients with server-side pagination, search, filtering, and sorting
+- Browse 10,000 seeded patients with server-side pagination, search, filtering, and sorting
 - View a patient's profile, clinical notes, and a generated summary
 - Create, edit, and delete patients with client- and server-side validation
 
@@ -23,7 +23,7 @@ docker compose up --build
 | App (frontend) | http://localhost:8080 |
 | API docs (Swagger) | http://localhost:8000/docs |
 
-The backend automatically applies migrations and seeds ~120 patients on first start.
+The backend automatically applies migrations and seeds ~10,000 patients on first start.
 **No secrets are required** — the patient summary falls back to a deterministic template
 unless an `ANTHROPIC_API_KEY` is provided.
 
@@ -67,7 +67,7 @@ docker compose up -d db
 cd backend
 uv sync                       # installs deps + provisions Python 3.12
 uv run alembic upgrade head   # create schema
-uv run python -m app.seed     # seed ~120 patients (idempotent)
+uv run python -m app.seed     # seed ~10,000 patients (idempotent)
 uv run uvicorn app.main:app --reload --port 8000
 ```
 

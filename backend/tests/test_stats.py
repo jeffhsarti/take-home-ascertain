@@ -54,6 +54,17 @@ async def test_stats_empty(client):
     assert body["top_conditions"] == []
 
 
+async def test_stats_cache_busted_on_mutation(client, patient_payload, monkeypatch):
+    # A write through this worker invalidates its cache so the writer's next
+    # dashboard request reflects the new total (across-worker lag remains).
+    calls = _count_computes(monkeypatch)
+    await client.get("/patients/stats")
+    await client.post("/patients", json=patient_payload)
+    body = (await client.get("/patients/stats")).json()
+    assert calls["n"] == 2
+    assert body["total"] == 1
+
+
 async def test_stats_aggregates(client, patient_payload):
     await _create(client, patient_payload, email="a@example.com", status="active",
                   date_of_birth="1990-05-15", blood_type="O+",
