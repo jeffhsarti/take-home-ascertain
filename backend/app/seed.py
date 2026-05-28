@@ -17,7 +17,7 @@ from app.models import BloodType, Note, Patient, PatientStatus
 
 logger = logging.getLogger("app.seed")
 
-NUM_PATIENTS = 120
+NUM_PATIENTS = 10000
 SEED = 42
 
 CONDITIONS = [
@@ -72,14 +72,16 @@ STATUSES = [PatientStatus.ACTIVE, PatientStatus.INACTIVE, PatientStatus.DISCHARG
 STATUS_WEIGHTS = [0.7, 0.2, 0.1]
 
 
-def _build_patient(fake: Faker, rng: random.Random) -> Patient:
+def _build_patient(fake: Faker, rng: random.Random, index: int) -> Patient:
     first = fake.first_name()
     last = fake.last_name()
+    # Suffix with the sequential index so the unique email constraint holds
+    # regardless of first/last name collisions (Faker's name pool is finite).
     return Patient(
         first_name=first,
         last_name=last,
         date_of_birth=fake.date_of_birth(minimum_age=1, maximum_age=95),
-        email=f"{first.lower()}.{last.lower()}{rng.randint(1, 999)}@example.com",
+        email=f"{first.lower()}.{last.lower()}.{index}@example.com",
         phone=fake.phone_number()[:50],
         address_street=fake.street_address(),
         address_city=fake.city(),
@@ -114,8 +116,8 @@ async def seed() -> None:
         rng = random.Random(SEED)
 
         patients: list[Patient] = []
-        for _ in range(NUM_PATIENTS):
-            patient = _build_patient(fake, rng)
+        for i in range(NUM_PATIENTS):
+            patient = _build_patient(fake, rng, i)
             patient.notes = _build_notes(rng)
             patients.append(patient)
 
