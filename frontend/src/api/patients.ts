@@ -1,5 +1,5 @@
 import { apiClient } from './client'
-import type { Paginated, Patient, PatientStatus } from '../types'
+import type { Paginated, Patient, PatientStats, PatientStatus } from '../types'
 import type { PatientFormValues } from '../lib/patientSchema'
 
 export interface ListPatientsParams {
@@ -18,6 +18,11 @@ export async function listPatients(params: ListPatientsParams): Promise<Paginate
 
 export async function getPatient(id: string): Promise<Patient> {
   const { data } = await apiClient.get<Patient>(`/patients/${id}`)
+  return data
+}
+
+export async function getPatientStats(): Promise<PatientStats> {
+  const { data } = await apiClient.get<PatientStats>('/patients/stats')
   return data
 }
 

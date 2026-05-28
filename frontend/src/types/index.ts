@@ -47,3 +47,11 @@ export interface PatientSummary {
   narrative: string
   source: 'template' | 'llm'
 }
+
+export interface PatientStats {
+  total: number
+  by_status: Record<PatientStatus, number>
+  by_blood_type: Record<BloodType, number>
+  by_age_group: { label: string; count: number }[]
+  top_conditions: { condition: string; count: number }[]
+}

@@ -11,6 +11,7 @@ import {
   ListItemIcon,
   ListItemText,
   Toolbar,
+  Tooltip,
   Typography,
   useMediaQuery,
 } from '@mui/material'
@@ -18,8 +19,12 @@ import { useTheme } from '@mui/material/styles'
 import MenuIcon from '@mui/icons-material/Menu'
 import DashboardIcon from '@mui/icons-material/Dashboard'
 import PeopleIcon from '@mui/icons-material/People'
+import MonitorHeartIcon from '@mui/icons-material/MonitorHeart'
+import LightModeIcon from '@mui/icons-material/LightMode'
+import DarkModeIcon from '@mui/icons-material/DarkMode'
+import { useThemeStore } from '../../store/themeStore'
 
-const DRAWER_WIDTH = 220
+const DRAWER_WIDTH = 240
 
 const NAV_ITEMS = [
   { label: 'Dashboard', to: '/', icon: <DashboardIcon /> },
@@ -31,12 +36,14 @@ export default function AppShell() {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const [mobileOpen, setMobileOpen] = useState(false)
   const location = useLocation()
+  const mode = useThemeStore((s) => s.mode)
+  const toggleMode = useThemeStore((s) => s.toggleMode)
 
   const isSelected = (to: string) =>
     to === '/' ? location.pathname === '/' : location.pathname.startsWith(to)
 
   const navList = (
-    <List>
+    <List sx={{ px: 1.5, py: 1 }}>
       {NAV_ITEMS.map((item) => (
         <ListItemButton
           key={item.to}
@@ -44,9 +51,19 @@ export default function AppShell() {
           to={item.to}
           selected={isSelected(item.to)}
           onClick={() => setMobileOpen(false)}
+          sx={{
+            borderRadius: 2,
+            mb: 0.5,
+            '&.Mui-selected': {
+              bgcolor: 'primary.main',
+              color: 'primary.contrastText',
+              '& .MuiListItemIcon-root': { color: 'inherit' },
+              '&:hover': { bgcolor: 'primary.dark' },
+            },
+          }}
         >
-          <ListItemIcon>{item.icon}</ListItemIcon>
-          <ListItemText primary={item.label} />
+          <ListItemIcon sx={{ minWidth: 40 }}>{item.icon}</ListItemIcon>
+          <ListItemText primary={item.label} slotProps={{ primary: { sx: { fontWeight: 600 } } }} />
         </ListItemButton>
       ))}
     </List>
@@ -61,15 +78,21 @@ export default function AppShell() {
               color="inherit"
               edge="start"
               onClick={() => setMobileOpen(true)}
-              sx={{ mr: 2 }}
+              sx={{ mr: 1 }}
               aria-label="open navigation"
             >
               <MenuIcon />
             </IconButton>
           )}
-          <Typography variant="h6" noWrap>
+          <MonitorHeartIcon color="primary" sx={{ mr: 1 }} />
+          <Typography variant="h6" noWrap sx={{ flexGrow: 1, fontWeight: 700 }}>
             Healthcare Dashboard
           </Typography>
+          <Tooltip title={mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
+            <IconButton onClick={toggleMode} color="inherit" aria-label="toggle color theme">
+              {mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
+            </IconButton>
+          </Tooltip>
         </Toolbar>
       </AppBar>
 
@@ -88,7 +111,15 @@ export default function AppShell() {
         {navList}
       </Drawer>
 
-      <Box component="main" sx={{ flexGrow: 1, p: 3, width: { md: `calc(100% - ${DRAWER_WIDTH}px)` } }}>
+      <Box
+        component="main"
+        sx={{
+          flexGrow: 1,
+          p: { xs: 2, md: 3 },
+          width: { md: `calc(100% - ${DRAWER_WIDTH}px)` },
+          bgcolor: 'background.default',
+        }}
+      >
         <Toolbar />
         <Suspense
           fallback={

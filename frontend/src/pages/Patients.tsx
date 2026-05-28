@@ -1,9 +1,10 @@
 import { useEffect, useRef } from 'react'
 import { Link as RouterLink, useSearchParams } from 'react-router-dom'
-import { Box, Button, MenuItem, Stack, TextField, Typography } from '@mui/material'
+import { Box, Button, MenuItem, Stack, TextField } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import { PatientList } from '../components/patients/PatientList'
 import { SearchBar } from '../components/patients/SearchBar'
+import { PageHeader } from '../components/common/PageHeader'
 import { usePatientListStore, type SortOrder } from '../store/uiStore'
 import type { PatientStatus } from '../types'
 
@@ -61,20 +62,19 @@ export default function Patients() {
 
   return (
     <Box>
-      <Stack
-        direction="row"
-        sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 2 }}
-      >
-        <Typography variant="h4">Patients</Typography>
-        <Button
-          component={RouterLink}
-          to="/patients/new"
-          variant="contained"
-          startIcon={<AddIcon />}
-        >
-          New patient
-        </Button>
-      </Stack>
+      <PageHeader
+        title="Patients"
+        action={
+          <Button
+            component={RouterLink}
+            to="/patients/new"
+            variant="contained"
+            startIcon={<AddIcon />}
+          >
+            New patient
+          </Button>
+        }
+      />
 
       <Stack direction="row" spacing={2} useFlexGap sx={{ mb: 2, flexWrap: 'wrap' }}>
         <SearchBar value={search} onChange={setSearch} />
