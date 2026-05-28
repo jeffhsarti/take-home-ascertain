@@ -22,6 +22,14 @@ export function PatientList() {
     sortOrder,
   })
 
+  // Stable references: a fresh sortModel/paginationModel object each render makes
+  // MUI X treat it as a model change and fire sortModelChange -> reset page to 0.
+  const paginationModel = useMemo(() => ({ page, pageSize }), [page, pageSize])
+  const sortModel = useMemo<GridSortModel>(
+    () => [{ field: sortBy, sort: sortOrder }],
+    [sortBy, sortOrder],
+  )
+
   // Memoized so cells/columns don't rebuild on every render.
   const columns = useMemo<GridColDef<Patient>[]>(
     () => [
@@ -75,13 +83,13 @@ export function PatientList() {
         loading={isFetching}
         paginationMode="server"
         sortingMode="server"
-        paginationModel={{ page, pageSize }}
+        paginationModel={paginationModel}
         onPaginationModelChange={(model) => {
           if (model.pageSize !== pageSize) setPageSize(model.pageSize)
-          else setPage(model.page)
+          if (model.page !== page) setPage(model.page)
         }}
         pageSizeOptions={[10, 20, 50, 100]}
-        sortModel={[{ field: sortBy, sort: sortOrder }]}
+        sortModel={sortModel}
         onSortModelChange={handleSortModelChange}
         onRowClick={(params) => navigate(`/patients/${params.id}`)}
         disableColumnFilter

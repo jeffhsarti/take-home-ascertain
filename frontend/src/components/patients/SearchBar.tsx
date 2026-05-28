@@ -22,9 +22,12 @@ export function SearchBar({ value, onChange, delay = 300 }: SearchBarProps) {
   }
 
   useEffect(() => {
+    // Don't emit on mount or when nothing actually changed — a spurious onChange
+    // would reset pagination and trigger a redundant query. Only debounce edits.
+    if (text === value) return
     const id = setTimeout(() => onChange(text), delay)
     return () => clearTimeout(id)
-  }, [text, delay, onChange])
+  }, [text, value, delay, onChange])
 
   return (
     <TextField

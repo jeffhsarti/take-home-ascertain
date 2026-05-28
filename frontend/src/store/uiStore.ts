@@ -29,7 +29,7 @@ export const usePatientListStore = create<PatientListState>((set) => ({
   pageSize: 20,
   setSearch: (search) => set({ search, page: 0 }),
   setStatus: (status) => set({ status, page: 0 }),
-  setSort: (sortBy, sortOrder) => set({ sortBy, sortOrder }),
+  setSort: (sortBy, sortOrder) => set({ sortBy, sortOrder, page: 0 }),
   setPage: (page) => set({ page }),
   setPageSize: (pageSize) => set({ pageSize, page: 0 }),
   hydrate: (partial) => set(partial),

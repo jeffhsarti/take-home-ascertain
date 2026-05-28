@@ -24,21 +24,31 @@ export default function Patients() {
   useEffect(() => {
     if (hydrated.current) return
     hydrated.current = true
+    const pageParam = Number.parseInt(searchParams.get('page') ?? '', 10)
+    const pageSizeParam = Number.parseInt(searchParams.get('page_size') ?? '', 10)
     hydrate({
       search: searchParams.get('search') ?? '',
       status: (searchParams.get('status') as PatientStatus | null) || null,
       sortBy: searchParams.get('sort_by') ?? 'last_name',
       sortOrder: (searchParams.get('sort_order') as SortOrder) ?? 'asc',
-      page: Number(searchParams.get('page') ?? 0),
-      pageSize: Number(searchParams.get('page_size') ?? 20),
+      // URL is 1-based (user-facing); the store/grid are 0-based.
+      page: Number.isFinite(pageParam) && pageParam >= 1 ? pageParam - 1 : 0,
+      pageSize: Number.isFinite(pageSizeParam) && pageSizeParam > 0 ? pageSizeParam : 20,
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Reflect filter state back into the URL (one-directional after hydration).
+  const syncReady = useRef(false)
   useEffect(() => {
+    // Skip the first run: the store still holds defaults until hydration's state
+    // update lands, and writing them now would clobber deep-linked params.
+    if (!syncReady.current) {
+      syncReady.current = true
+      return
+    }
     const params: Record<string, string> = {
-      page: String(page),
+      page: String(page + 1), // store is 0-based; URL is 1-based
       page_size: String(pageSize),
       sort_by: sortBy,
       sort_order: sortOrder,
