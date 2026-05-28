@@ -46,9 +46,18 @@ unless an `ANTHROPIC_API_KEY` is provided.
 build and reverse-proxies `/api/*` to the backend (`:8000`) over the Docker network, so
 there is no CORS in the Docker setup. The backend port is exposed only for Swagger.
 
-**Stretch goals implemented:** automated tests (pytest + Vitest/RTL/MSW); performance
-(DataGrid row virtualization, lazy-loaded routes, memoized cells); advanced backend
-(Alembic migrations + server-side sort/filter query params).
+**Stretch goals implemented:**
+- **Tests** — pytest + Vitest/RTL/MSW
+- **Dashboard data viz** — `/patients/stats` aggregation endpoint + 4 charts (status donut,
+  age histogram, blood-type bars, top conditions) using `@mui/x-charts`
+- **Theme overhaul + dark mode** with a shared color palette across charts and status chips
+- **Frontend perf** — DataGrid row virtualization, lazy-loaded routes, memoized cells
+- **Advanced backend** — Alembic migrations + server-side sort/filter/search query params
+- **Backend perf hardening** — uvicorn worker tuning, SQLAlchemy pool sizing, in-process
+  cache on `/patients/stats`, min-length guard on search (defeats trigram seq-scan), btree
+  indexes on the remaining sortable columns
+- **Load & stress testing** — full k6 suite covering read paths, write smoke (regression
+  canary), and write stress (ramp-to-knee, isolated stack). See [`perf/README.md`](./perf/README.md).
 
 ---
 
@@ -91,6 +100,9 @@ See [`.env.example`](./.env.example). Copy it to `.env` before running.
 | `DATABASE_URL` | Async SQLAlchemy URL (host dev uses `localhost`; Compose overrides host to `db`) | local URL |
 | `ANTHROPIC_API_KEY` | **Optional.** Enables LLM-generated summaries; blank uses the template | _(blank)_ |
 | `BACKEND_CORS_ORIGINS` | Comma-separated allowed origins | `http://localhost:8080` |
+| `WEB_CONCURRENCY` | uvicorn worker processes (each has its own pool) | `2` |
+| `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` | SQLAlchemy pool per worker. Total connections = `WEB_CONCURRENCY * (POOL_SIZE + MAX_OVERFLOW)`; keep under Postgres `max_connections` (compose sets `200`) | `10` / `20` |
+| `SEED_COUNT` | Patients to seed on first start. Lowered to `1000` for the perf-stack DB | `10000` |
 
 ---
 
@@ -127,17 +139,25 @@ cd frontend && npm test
 
 ### Performance / stress (k6)
 
-Load tests for the read paths behind the dashboard, list, and search live in
-[`perf/`](./perf/README.md). With the stack running, from the repo root:
+A k6 suite under [`perf/`](./perf/README.md) covers both read paths (dashboard, list,
+search) and write paths (create/update/delete on patients and notes). With the stack
+running, from the repo root:
 
 ```bash
-# Baseline (run first); swap PROFILE for load | stress | spike
+# Read profiles — baseline first; swap PROFILE for load | stress | spike
 docker run --rm --network host -w /scripts --user "$(id -u):$(id -g)" \
   -e PROFILE=smoke -v "$PWD/perf/k6:/scripts" grafana/k6 run main.js
+
+# Write regression canary (1 VU, sequential POST/PUT/DELETE chain, net-zero rows)
+docker run --rm --network host -w /scripts --user "$(id -u):$(id -g)" \
+  -e PROFILE=writes-smoke -v "$PWD/perf/k6:/scripts" grafana/k6 run main.js
 ```
 
-No local k6 install required. See [`perf/README.md`](./perf/README.md) for the profiles,
-thresholds, and how the tagged output pinpoints each suspected bottleneck.
+A separate **isolated** stack (`docker compose --profile perf up`) on `:8001` backs the
+ramp-to-knee write profiles (`writes-stress-pure`, `writes-stress-mixed`) so the main
+10k-seed DB is never touched. No local k6 install required. See
+[`perf/README.md`](./perf/README.md) for the full profile matrix, thresholds, bring-up
+of the isolated stack, and how the tagged output pinpoints each suspected bottleneck.
 
 ---
 
@@ -146,6 +166,8 @@ thresholds, and how the tagged output pinpoints each suspected bottleneck.
 ```
 backend/         FastAPI app (api/, models/, schemas/, services/), Alembic, tests
 frontend/        Vite React app (pages/, components/, hooks/, api/, store/), tests
+perf/            k6 load/stress suite (read + write profiles, isolated stack)
+docs/            Planning artifacts — plan.md + per-task briefs under tasks/
 docker-compose.yml
 .env.example
 ```
@@ -161,6 +183,7 @@ docker-compose.yml
   regardless of dataset size; the DataGrid virtualizes rendered rows.
 - **State**: server data lives in TanStack Query; only UI filter/sort state is in Zustand,
   mirrored into the URL so list views are shareable and survive reloads.
-- **With more time**: auth/roles, a status-distribution chart, optimistic create/edit,
-  and E2E tests.
+- **With more time**: auth/roles, optimistic create/edit, E2E tests, and applying the
+  task-24 mitigations (shared cache or materialized view) to close the read-SLO breach
+  the mixed write-stress profile surfaces.
 ```
