@@ -10,6 +10,7 @@ from app.core.config import settings
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
+from app.services.patients import reset_stats_cache
 
 # Derive a dedicated test database on the same server as the dev database.
 _SERVER = settings.database_url.replace("+asyncpg", "").rsplit("/", 1)[0]
@@ -41,6 +42,10 @@ async def client():
     async def override_get_db():
         async with session_factory() as session:
             yield session
+
+    # The stats cache is a module global; clear it so it never leaks across tests
+    # (each test gets a fresh schema).
+    reset_stats_cache()
 
     app.dependency_overrides[get_db] = override_get_db
     transport = ASGITransport(app=app)

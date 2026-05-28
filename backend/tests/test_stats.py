@@ -1,7 +1,40 @@
+import app.services.patients as svc
+from app.core.config import settings
+
+
 async def _create(client, payload, **overrides):
     resp = await client.post("/patients", json={**payload, **overrides})
     assert resp.status_code == 201
     return resp.json()
+
+
+def _count_computes(monkeypatch) -> dict:
+    """Patch the (uncached) aggregation to count how often it actually runs."""
+    calls = {"n": 0}
+    real = svc._compute_patient_stats
+
+    async def counting(session):
+        calls["n"] += 1
+        return await real(session)
+
+    monkeypatch.setattr(svc, "_compute_patient_stats", counting)
+    return calls
+
+
+async def test_stats_cached_within_ttl(client, monkeypatch):
+    # Default TTL > 0: the second call is served from cache without recomputing.
+    calls = _count_computes(monkeypatch)
+    await client.get("/patients/stats")
+    await client.get("/patients/stats")
+    assert calls["n"] == 1
+
+
+async def test_stats_cache_disabled(client, monkeypatch):
+    monkeypatch.setattr(settings, "stats_cache_ttl_seconds", 0)
+    calls = _count_computes(monkeypatch)
+    await client.get("/patients/stats")
+    await client.get("/patients/stats")
+    assert calls["n"] == 2
 
 
 async def test_stats_empty(client):

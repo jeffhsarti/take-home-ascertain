@@ -8,6 +8,10 @@ services:
     image: postgres:16-alpine
     container_name: ascertain-db
     restart: unless-stopped
+    # Headroom for the backend's per-worker pools: web_concurrency * (pool_size +
+    # max_overflow) must stay under max_connections. Default 100 is enough for the
+    # defaults (2 * 30 = 60); raised here so bumping WEB_CONCURRENCY stays safe.
+    command: ["postgres", "-c", "max_connections=200"]
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
@@ -31,6 +35,10 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-healthcare}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-http://localhost:8080}
+      # Concurrency & pool (task-18). See max_connections on the db service above.
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-2}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-10}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-20}
     depends_on:
       db:
         condition: service_healthy

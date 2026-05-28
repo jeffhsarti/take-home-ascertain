@@ -1,8 +1,11 @@
+import asyncio
+import time
 from uuid import UUID
 
 from sqlalchemy import case, func, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.models import BloodType, Patient, PatientStatus
 from app.schemas.patient import PatientCreate, PatientUpdate
 from app.schemas.stats import AgeGroupBucket, ConditionCount, PatientStats
@@ -85,7 +88,44 @@ async def delete_patient(session: AsyncSession, patient: Patient) -> None:
     await session.commit()
 
 
+# Short-lived, per-process cache for the dashboard aggregates (task-19). The stats
+# query is the heaviest read (five aggregations incl. a JSONB unnest over every row);
+# the dashboard is the landing page, so it gets hit on every session open.
+_stats_cache: PatientStats | None = None
+_stats_cached_at: float = 0.0
+_stats_lock = asyncio.Lock()
+
+
+def reset_stats_cache() -> None:
+    """Drop the cached stats. Used by tests and after bulk data changes."""
+    global _stats_cache, _stats_cached_at
+    _stats_cache = None
+    _stats_cached_at = 0.0
+
+
 async def get_patient_stats(session: AsyncSession) -> PatientStats:
+    """Return dashboard aggregates, served from a short-lived in-process cache.
+
+    The cache is per uvicorn worker, so a value can be up to `stats_cache_ttl_seconds`
+    stale and workers may briefly disagree — acceptable for a stats dashboard. Set the
+    TTL to 0 to always recompute."""
+    ttl = settings.stats_cache_ttl_seconds
+    if ttl <= 0:
+        return await _compute_patient_stats(session)
+
+    global _stats_cache, _stats_cached_at
+    if _stats_cache is not None and (time.monotonic() - _stats_cached_at) < ttl:
+        return _stats_cache
+
+    async with _stats_lock:
+        # Another coroutine may have refreshed it while we waited for the lock.
+        if _stats_cache is None or (time.monotonic() - _stats_cached_at) >= ttl:
+            _stats_cache = await _compute_patient_stats(session)
+            _stats_cached_at = time.monotonic()
+        return _stats_cache
+
+
+async def _compute_patient_stats(session: AsyncSession) -> PatientStats:
     """Aggregate counts for the dashboard charts in a handful of GROUP BY queries.
 
     Every category is zero-filled so the frontend always receives the full set of
