@@ -6,6 +6,7 @@ runs when the patients table is empty, so it is safe to invoke on every startup.
 
 import asyncio
 import logging
+import os
 import random
 from datetime import UTC, datetime, timedelta
 
@@ -17,7 +18,9 @@ from app.models import BloodType, Note, Patient, PatientStatus
 
 logger = logging.getLogger("app.seed")
 
-NUM_PATIENTS = 10000
+# Override via SEED_COUNT for the perf stack (task-24), which wants a smaller
+# dataset so `docker compose --profile perf down -v` reseeds in seconds.
+NUM_PATIENTS = int(os.environ.get("SEED_COUNT", "10000"))
 SEED = 42
 
 CONDITIONS = [

@@ -63,5 +63,63 @@ services:
     ports:
       - "8080:80"
 
+  # --- task-24: isolated write-stress stack -----------------------------------
+  # Only brought up with `docker compose --profile perf up`. Lives alongside the
+  # main stack so k6's writes-stress-* profiles can hammer a disposable backend
+  # without polluting the 10k-seed DB on `:8000`.
+  postgres-perf:
+    profiles: [perf]
+    image: postgres:16-alpine
+    container_name: ascertain-db-perf
+    restart: unless-stopped
+    command: ["postgres", "-c", "max_connections=200"]
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: healthcare_perf
+    # Different host port so it doesn't clash with the main db on 5432.
+    ports:
+      - "55433:5432"
+    volumes:
+      - pgdata-perf:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d healthcare_perf"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend-perf:
+    profiles: [perf]
+    build: ./backend
+    container_name: ascertain-backend-perf
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres-perf:5432/healthcare_perf
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-http://localhost:8080}
+      # Inherit task-18 capacity tuning — the knee we find must reflect shipped
+      # config, not defaults. Override via env if you want to probe a tuning change.
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-2}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-10}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-20}
+      # Reduced seed: ~1000 rows is enough for trigram/sort indexes to be
+      # index-served while keeping `down -v` reseed fast (seconds, not a minute).
+      SEED_COUNT: ${SEED_COUNT:-1000}
+    depends_on:
+      postgres-perf:
+        condition: service_healthy
+    # :8001 host-side so k6 can target it directly via BASE_URL=http://localhost:8001.
+    ports:
+      - "8001:8000"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
 volumes:
   pgdata:
+  pgdata-perf:

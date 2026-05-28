@@ -7,9 +7,9 @@
 
 export const BASE_URL = __ENV.BASE_URL || 'http://localhost:8000';
 
-// SLOs. Calibrate these against a `smoke` run (uncontended baseline) before trusting
-// the stress pass/fail — the absolute numbers depend on the host running Postgres.
-const THRESHOLDS = {
+// Shared SLOs for the read profiles. Calibrate against a `smoke` run (uncontended
+// baseline) before trusting `stress` pass/fail — absolute numbers depend on the host.
+const BASE_THRESHOLDS = {
   http_req_failed: ['rate<0.01'],
   checks: ['rate>0.99'],
 
@@ -19,9 +19,8 @@ const THRESHOLDS = {
   'http_req_duration{scenario:browse_list}': ['p(95)<300'],
   'http_req_duration{scenario:search}': ['p(95)<500'],
 
-  // Reporting-only sub-metrics (empty array = no pass/fail, but k6 still computes and
-  // prints them). This is what surfaces each suspected bottleneck in the summary:
-  // compare the p95 of the paired tags.
+  // Reporting-only sub-metrics (empty array = no pass/fail, but k6 still computes
+  // and prints them). This surfaces each suspected bottleneck: compare paired tags.
   'http_req_duration{term_kind:prefix}': [], // 3-char prefix: broad but index-served
   'http_req_duration{term_kind:full}': [], //    full-surname match
   'http_req_duration{term_kind:email}': [],
@@ -30,16 +29,43 @@ const THRESHOLDS = {
   'http_req_duration{depth:shallow}': [],
   'http_req_duration{sort:unindexed}': [], // hypothesis #4: unindexed ORDER BY
   'http_req_duration{sort:indexed}': [],
+};
 
-  // task-23 write-path smoke. Calibrated at ~5x the first clean-run p95 (which
-  // came in at 4-8ms locally), so the budget catches a real regression without
-  // tripping on single-iteration noise. Re-baseline if the host hardware changes.
+// task-23 write-path smoke thresholds — calibrated at ~5x the first clean-run p95
+// (4-8ms locally). Only applied when PROFILE === 'writes-smoke'; the stress
+// profiles would always trip these by design (that IS the knee), so we strip them.
+const WRITES_SMOKE_THRESHOLDS = {
   'http_req_duration{scenario:writes,op:create}': ['p(95)<50'],
   'http_req_duration{scenario:writes,op:update}': ['p(95)<50'],
   'http_req_duration{scenario:writes,op:delete}': ['p(95)<30'],
   'http_req_duration{scenario:writes,op:note}': ['p(95)<50'],
   'http_req_duration{scenario:writes,op:note_delete}': ['p(95)<30'],
 };
+
+// task-24 write-path stress — reporting-only entries so the summary still breaks
+// out per-op p95 and write-side failure rate, but k6 doesn't fail the run when the
+// knee shows up (that's the deliverable, not a regression).
+const WRITES_STRESS_REPORTING = {
+  'http_req_duration{scenario:writes,op:create}': [],
+  'http_req_duration{scenario:writes,op:update}': [],
+  'http_req_duration{scenario:writes,op:delete}': [],
+  'http_req_duration{scenario:writes,op:note}': [],
+  'http_req_duration{scenario:writes,op:note_delete}': [],
+  'http_req_failed{scenario:writes}': [],
+};
+
+function buildThresholds(profile) {
+  if (profile === 'writes-smoke') return { ...BASE_THRESHOLDS, ...WRITES_SMOKE_THRESHOLDS };
+  if (profile === 'writes-stress-pure' || profile === 'writes-stress-mixed') {
+    // Pure has no read traffic, so the read SLOs would have empty samples; mixed
+    // KEEPS the read SLOs as pass/fail on purpose — a write-induced read regression
+    // SHOULD trip them. Drop the global http_req_failed: the per-scenario reporting
+    // entry above is what we read for writes.
+    const { http_req_failed: _drop, ...withoutGlobalFail } = BASE_THRESHOLDS;
+    return { ...withoutGlobalFail, ...WRITES_STRESS_REPORTING };
+  }
+  return BASE_THRESHOLDS;
+}
 
 // --- executor factories -----------------------------------------------------------
 
@@ -139,6 +165,29 @@ const PROFILES = {
       maxDuration: '1m',
     },
   },
+  // task-24: write-path stress (ramp-to-knee), against the ISOLATED perf stack
+  // (BASE_URL=http://localhost:8001, compose --profile perf). The main DB is
+  // never touched; teardown is `docker compose --profile perf down -v`.
+  // Each iteration of `writes` issues 5 requests, so target the SCENARIO rate
+  // accordingly (rps in the writes scenario ≈ 5x iteration rate).
+  'writes-stress-pure': {
+    // First run at peak=40 iter/s never broke (0% errors, p95 ~6ms) — the path
+    // scales much higher than that. Bumped to 200 iter/s (~1000 rps of writes)
+    // to actually find the knee. Re-calibrate if the host config changes.
+    writes: arrivalRate('writes', 200, 300),
+  },
+  // 90/10 read:write blend by per-scenario arrival rate. Hits the same backend
+  // through different paths, so a write-induced read regression (pool starvation,
+  // lock waits) shows up as a read SLO breach while writes are still healthy —
+  // exactly the contention signal pure-write can't reveal.
+  'writes-stress-mixed': {
+    // Reads: ~540 rps combined, split across the three read scenarios.
+    dashboard: arrivalRate('dashboard', 180, 300),
+    browse_list: arrivalRate('browseList', 240, 500),
+    search: arrivalRate('search', 180, 500),
+    // Writes: ~12 iter/s × 5 requests = ~60 rps → ~10% of combined load.
+    writes: arrivalRate('writes', 12, 100),
+  },
 };
 
 export function buildOptions(env) {
@@ -151,7 +200,7 @@ export function buildOptions(env) {
   }
   return {
     scenarios,
-    thresholds: THRESHOLDS,
+    thresholds: buildThresholds(profile),
     summaryTrendStats: ['avg', 'min', 'med', 'p(90)', 'p(95)', 'p(99)', 'max'],
   };
 }

@@ -45,6 +45,15 @@ docker run --rm --network host -w /scripts --user "$(id -u):$(id -g)" \
 # Writes-smoke — 1 VU, sequential POST/PUT/DELETE chain. Regression canary only.
 docker run --rm --network host -w /scripts --user "$(id -u):$(id -g)" \
   -e PROFILE=writes-smoke -v "$PWD/perf/k6:/scripts" grafana/k6 run main.js
+
+# Writes-stress (pure / mixed) — ramp-to-knee, against the ISOLATED perf stack on :8001.
+# Bring it up first: `docker compose --profile perf up -d` (see "Write-path stress" below).
+docker run --rm --network host -w /scripts --user "$(id -u):$(id -g)" \
+  -e PROFILE=writes-stress-pure -e BASE_URL=http://localhost:8001 \
+  -v "$PWD/perf/k6:/scripts" grafana/k6 run main.js
+docker run --rm --network host -w /scripts --user "$(id -u):$(id -g)" \
+  -e PROFILE=writes-stress-mixed -e BASE_URL=http://localhost:8001 \
+  -v "$PWD/perf/k6:/scripts" grafana/k6 run main.js
 ```
 
 Override the target (e.g. through the nginx proxy):
@@ -63,13 +72,15 @@ Each run prints a summary and writes `perf/k6/out/summary-<profile>-<timestamp>.
 
 ## Profiles
 
-| Profile        | Executor                              | Shape                             | Answers                                      |
-| -------------- | ------------------------------------- | --------------------------------- | -------------------------------------------- |
-| `smoke`        | `constant-vus` (1), sequential        | one endpoint at a time, 20s each  | baseline latency per endpoint, no contention |
-| `load`         | `ramping-vus`                         | ramp → hold 2m, all concurrent    | does it hold at expected traffic?            |
-| `stress`       | `ramping-arrival-rate`                | climb rate in stages (open model) | **where does it break?**                     |
-| `spike`        | `ramping-arrival-rate`                | low → surge → low                 | how does it recover from a burst?            |
-| `writes-smoke` | `per-vu-iterations` (1 VU, 10 chains) | sequential POST→PUT→note→delete   | has any write path regressed since last run? |
+| Profile               | Executor                                  | Shape                                     | Answers                                               |
+| --------------------- | ----------------------------------------- | ----------------------------------------- | ----------------------------------------------------- |
+| `smoke`               | `constant-vus` (1), sequential            | one endpoint at a time, 20s each          | baseline latency per endpoint, no contention          |
+| `load`                | `ramping-vus`                             | ramp → hold 2m, all concurrent            | does it hold at expected traffic?                     |
+| `stress`              | `ramping-arrival-rate`                    | climb rate in stages (open model)         | **where does it break?**                              |
+| `spike`               | `ramping-arrival-rate`                    | low → surge → low                         | how does it recover from a burst?                     |
+| `writes-smoke`        | `per-vu-iterations` (1 VU, 10 chains)     | sequential POST→PUT→note→delete           | has any write path regressed since last run?          |
+| `writes-stress-pure`  | `ramping-arrival-rate` (writes only)      | climb iter-rate past collapse, open model | where does the **write** path break? (isolated stack) |
+| `writes-stress-mixed` | `ramping-arrival-rate` (90/10 read:write) | reads + writes climb together, open model | does write load crowd reads out of the pool?          |
 
 `stress`/`spike` use an **open model** (arrival rate, not VU count): k6 keeps offering the
 target request rate even as the server slows, so saturation shows up as rising latency and
@@ -130,22 +141,86 @@ docker exec ascertain-db psql -U postgres -d healthcare \
 # … run PROFILE=writes-smoke … then re-run the same query and diff.
 ```
 
-### Why this is smoke-only
+### Why `writes-smoke` stays smoke-shaped
 
-`load`/`stress` profiles are deliberately not provided for the write path:
+The smoke profile runs against the **main DB** and is idempotent on purpose: a single
+VU and an in-iteration create→delete pair, so it can't pollute the 10k seed. Open-model
+stress on the main DB would create hundreds of thousands of throwaway rows and skew
+every read measurement until reseeded — so write-path stress lives in `writes-stress-*`
+against an isolated stack instead (see next section).
 
-- **No volumetria target.** The read SLOs were calibrated against a dashboard UX
-  budget; we have no equivalent for writes (no stated concurrent-editor target, no
-  ingestion rate). A pass/fail bar at high RPS would be invented.
-- **Open-model arrival rate pollutes the dataset.** A `stress`-style profile against
-  `POST /patients` would create hundreds of thousands of fake rows, skewing the read
-  suite's page counts, search hits, and stats aggregations until reseeded.
-- **The first-order ceiling is already mapped.** task-17's `stress` collapsed
-  uniformly on worker/pool capacity; saturating writes would re-discover the same
-  ceiling at the cost of a polluted DB.
+## Write-path stress (`writes-stress-*`, task-24)
 
-Promote to a full `writes-load` profile once a real volumetria target exists — that's
-deferred future work, scoped in `docs/tasks/task-23-k6-write-smoke-tests.md`.
+`writes-smoke` answers _"did anything regress?"_ but not _"where does the write path
+break?"_. The stress profiles answer the second question — same ramp-to-knee shape as
+task-17's read `stress`, but isolated so no real data is at risk.
+
+### Isolated stack — bring-up
+
+A second compose profile, `perf`, ships a disposable backend + Postgres alongside the
+main stack:
+
+```bash
+# From the repo root. Main stack on :8000 keeps running; perf stack lands on :8001.
+docker compose --profile perf up -d backend-perf
+# Wait for it to seed (~5s for ~1000 rows) and report healthy.
+curl -s localhost:8001/health   # expect {"status":"ok"}
+
+# Sanity-check the seed landed in the perf DB (and NOT the main DB):
+docker exec ascertain-db-perf psql -U postgres -d healthcare_perf \
+  -c 'SELECT count(*) FROM patients;'   # expect ~1000
+
+# Run a stress profile:
+docker run --rm --network host -w /scripts --user "$(id -u):$(id -g)" \
+  -e PROFILE=writes-stress-pure -e BASE_URL=http://localhost:8001 \
+  -v "$PWD/perf/k6:/scripts" grafana/k6 run main.js
+
+# Teardown — destroys ONLY the perf containers + volume so the next run reseeds clean.
+# DO NOT use `docker compose --profile perf down -v` — `down` ignores the profile filter
+# and tears down the entire compose project (including the main DB volume).
+docker compose stop backend-perf postgres-perf
+docker compose rm -f backend-perf postgres-perf
+docker volume rm take-home-ascertain_pgdata-perf
+```
+
+The perf backend inherits `WEB_CONCURRENCY` / `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` from
+the main backend's defaults (task-18 tuning), so the knee you find reflects the shipped
+config — not unconfigured defaults. Override via env vars (`-e WEB_CONCURRENCY=4 …`) to
+probe a tuning change.
+
+### Two profiles, two questions
+
+| Profile               | What it isolates                                                                  |
+| --------------------- | --------------------------------------------------------------------------------- |
+| `writes-stress-pure`  | Raw write cost: how fast can the path absorb POST/PUT/DELETE before failing?      |
+| `writes-stress-mixed` | Contention: does write load starve the read paths' connection pool / lock budget? |
+
+The pure profile only fires `writes` scenarios; the mixed profile fires
+`dashboard` + `browseList` + `search` + `writes` together at a ~90/10 read:write
+RPS split (configurable in `lib/config.js`). Open-model arrival-rate executors mean
+the ratio holds even past the knee — when the server slows, all rates slip in
+proportion.
+
+### Reading the knee (reporting-only, no pass/fail)
+
+Write thresholds are **reporting-only** (empty array in `config.js`) — by design, since
+we have no volumetria target. The point is to see _where_ things break, not to assert
+they don't. The signals to look for:
+
+- `http_req_failed{scenario:writes}` climbs above ~5% → write path saturated. The
+  arrival rate at which this happens is the throughput ceiling.
+- Per-op p95 starts diverging (e.g. `create` ≫ `delete`) → contention on inserts
+  specifically — likely lock waits or the write-amplification from task-21's indexes
+  scaling badly with concurrency.
+- In `mixed`: existing read SLOs (`dashboard:p95<800ms`, `browse_list:p95<300ms`,
+  `search:p95<500ms`) trip _while_ `http_req_failed{scenario:writes}` is still low →
+  reads are being crowded out of the connection pool by writes. That's a capacity
+  rebalancing question (`DB_POOL_SIZE` / `WEB_CONCURRENCY`), not a write-path fix.
+
+When a real volumetria target arrives, promote the write thresholds from `[]` to a
+calibrated `p(95)<…` and add a sustained `writes-load` profile alongside, mirroring
+how task-17 has both `load` and `stress`. Scoped as future work in
+`docs/tasks/task-24-k6-write-stress-tests.md`.
 
 ## Drilling into a regression
 

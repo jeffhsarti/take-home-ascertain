@@ -31,6 +31,7 @@ See [`../plan.md`](../plan.md) for the overall architecture and decisions.
 | 21 | [Indexes for sortable columns](./task-21-sortable-column-indexes.md) | Perf follow-up · P2 | 03, 05, 17 |
 | 22 | [Keyset pagination & count strategy](./task-22-keyset-pagination-count-strategy.md) | Perf follow-up · P3 | 05, 08, 21, 17 |
 | 23 | [k6 write-path smoke tests](./task-23-k6-write-smoke-tests.md) | Perf follow-up · P3 | 05, 06, 17, 21 |
+| 24 | [k6 write-path stress (ramp-to-knee)](./task-24-k6-write-stress-tests.md) | Perf follow-up · P3 | 12, 17, 18, 23 |
 
 **Suggested execution order:** 00 → 01 → 02 → 03 → 04 → 05 → 06 → 07 → 08 → 09 → 10 → 11 → 12 → 13.
 Task 00 stands up Postgres first so the backend can be developed against a real database
@@ -53,8 +54,13 @@ ceiling).
   realistic `load`. See each task's Outcome and task-17's Findings.
 - **22 (keyset pagination): deferred** by request — the remaining list/search ceiling under
   extreme `stress` lives here, but it's not needed at realistic traffic.
-- **23 (write-path smoke): proposed** — adds a regression canary for `POST/PUT/DELETE`
-  paths (especially relevant after task-21 added write-amplifying indexes). Smoke-only:
-  full load/stress on writes is deliberately deferred until a volumetria target exists,
-  since arbitrary write SLOs would be invented and open-model arrival rate would pollute
-  the read dataset. Rationale documented in the task body.
+- **23 (write-path smoke): ✅ implemented & verified** — regression canary for
+  `POST/PUT/DELETE` paths (especially relevant after task-21 added write-amplifying
+  indexes). Smoke-only; thresholds calibrated at ~5x the local baseline. Net-zero row
+  delta verified per run.
+- **24 (write-path stress, ramp-to-knee): proposed** — exploratory write equivalent of
+  task-17's `stress`. Runs against an **isolated** `postgres-perf`/`backend-perf` (compose
+  profile `perf`) so it never touches the 10k-seed DB. Two sub-profiles
+  (`writes-stress-pure` and `writes-stress-mixed` 90/10 read:write) and **reporting-only
+  thresholds** — no SLO until volumetria exists, the deliverable is evidence of where
+  the knee lives. Rationale and isolation contract documented in the task body.
