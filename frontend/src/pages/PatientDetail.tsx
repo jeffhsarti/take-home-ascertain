@@ -165,7 +165,9 @@ export default function PatientDetail() {
           <Field label="Last visit" value={patient.last_visit ?? '—'} />
         </Box>
         <Divider sx={{ my: 2 }} />
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' }, gap: 2 }}>
+        <Box
+          sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' }, gap: 2 }}
+        >
           <Box>
             <Typography variant="caption" color="text.secondary">
               Conditions
@@ -236,8 +238,8 @@ export default function PatientDetail() {
         <DialogTitle>Delete patient?</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            This will permanently remove {patient.first_name} {patient.last_name} and all of
-            their clinical notes. This action cannot be undone.
+            This will permanently remove {patient.first_name} {patient.last_name} and all of their
+            clinical notes. This action cannot be undone.
           </DialogContentText>
           {deletePatientMutation.isError && (
             <Alert severity="error" sx={{ mt: 2 }}>

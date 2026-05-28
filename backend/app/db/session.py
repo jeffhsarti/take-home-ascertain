@@ -10,9 +10,7 @@ from app.core.config import settings
 # unaffected by this.
 _connect_args: dict = {}
 if settings.db_statement_timeout_ms > 0:
-    _connect_args["server_settings"] = {
-        "statement_timeout": str(settings.db_statement_timeout_ms)
-    }
+    _connect_args["server_settings"] = {"statement_timeout": str(settings.db_statement_timeout_ms)}
 
 # Explicit pool sizing (task-18). pool_recycle replaces pool_pre_ping: it refreshes
 # connections on an interval instead of paying a round-trip liveness check on every

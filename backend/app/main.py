@@ -38,7 +38,10 @@ async def _integrity_error_handler(request: Request, exc: IntegrityError) -> JSO
     if sqlstate != "23505":
         logger.error(
             "Non-unique integrity error on %s %s (sqlstate=%s): %s",
-            request.method, request.url.path, sqlstate, exc.orig,
+            request.method,
+            request.url.path,
+            sqlstate,
+            exc.orig,
         )
         raise exc
     logger.warning("Unique violation on %s %s: %s", request.method, request.url.path, exc.orig)

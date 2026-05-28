@@ -106,9 +106,7 @@ async def test_sorting_by_last_name(client, patient_payload):
 
 
 async def test_future_last_visit_returns_422(client, patient_payload):
-    resp = await client.post(
-        "/patients", json={**patient_payload, "last_visit": "2999-01-01"}
-    )
+    resp = await client.post("/patients", json={**patient_payload, "last_visit": "2999-01-01"})
     assert resp.status_code == 422
 
 

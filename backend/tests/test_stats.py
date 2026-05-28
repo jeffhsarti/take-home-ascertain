@@ -66,13 +66,33 @@ async def test_stats_cache_busted_on_mutation(client, patient_payload, monkeypat
 
 
 async def test_stats_aggregates(client, patient_payload):
-    await _create(client, patient_payload, email="a@example.com", status="active",
-                  date_of_birth="1990-05-15", blood_type="O+",
-                  conditions=["Asthma", "Hypertension"])
-    await _create(client, patient_payload, email="b@example.com", status="inactive",
-                  date_of_birth="2015-01-01", blood_type="A+", conditions=["Asthma"])
-    await _create(client, patient_payload, email="c@example.com", status="discharged",
-                  date_of_birth="1945-01-01", blood_type="O+", conditions=[])
+    await _create(
+        client,
+        patient_payload,
+        email="a@example.com",
+        status="active",
+        date_of_birth="1990-05-15",
+        blood_type="O+",
+        conditions=["Asthma", "Hypertension"],
+    )
+    await _create(
+        client,
+        patient_payload,
+        email="b@example.com",
+        status="inactive",
+        date_of_birth="2015-01-01",
+        blood_type="A+",
+        conditions=["Asthma"],
+    )
+    await _create(
+        client,
+        patient_payload,
+        email="c@example.com",
+        status="discharged",
+        date_of_birth="1945-01-01",
+        blood_type="O+",
+        conditions=[],
+    )
 
     body = (await client.get("/patients/stats")).json()
 
